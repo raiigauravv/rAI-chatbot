@@ -100,7 +100,7 @@ def build_comment(repo: str, pr_number: str, head_sha: str,
                   metrics: Dict) -> str:
     lines = []
     lines.append(MARKER)
-    lines.append(f"### 🧪 Data Science PR Assistant")
+    lines.append(f"### NoteGuardian 🛡️")
     lines.append(f"_Analyzed PR #{pr_number} @ `{head_sha[:7]}`_")
     lines.append("")
     if ipynb_results:

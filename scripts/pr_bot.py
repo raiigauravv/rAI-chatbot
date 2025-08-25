@@ -119,21 +119,35 @@ def build_comment(repo: str, pr_number: str, head_sha: str,
     lines.append(f"### NoteGuardian 🛡️")
     lines.append(f"_Analyzed PR #{pr_number} @ `{head_sha[:7]}`_")
     lines.append("")
+    warnings_block = []
     if ipynb_results:
         lines.append("#### Notebooks changed")
-        lines.append("| File | Status | Warnings |")
-        lines.append("|------|--------|----------|")
+        lines.append("| File | Status |")
+        lines.append("|------|--------|")
         for path, status, warnings in ipynb_results:
-            warn_str = "; ".join(warnings) if warnings else ""
-            lines.append(f"| `{path}` | {status} | {warn_str} |")
+            lines.append(f"| `{path}` | {status} |")
+            if warnings:
+                warn_str = "; ".join(warnings)
+                warnings_block.append(f"- `{path}`: {warn_str}")
         lines.append("")
+        if warnings_block:
+            lines.append("<details><summary>Notebook warnings (click to expand)</summary>")
+            lines.extend(warnings_block)
+            lines.append("</details>")
+            lines.append("")
         lines.append("> Tip: Clear outputs via `jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace your_notebook.ipynb`")
-        lines.append("> Or add a pre-commit hook: `nbstripout`")
+        lines.append("> Or add a pre-commit hook: [`nbstripout`](https://github.com/kynan/nbstripout)")
+        lines.append("> [Jupyter Notebook Docs](https://jupyter-notebook.readthedocs.io/en/stable/)")
         lines.append("")
     if data_files:
-        lines.append("#### Data files changed")
+        if len(data_files) > 5:
+            lines.append("<details><summary>Data files changed (click to expand)</summary>")
+        else:
+            lines.append("#### Data files changed")
         for p in data_files:
             lines.append(f"- `{p}`")
+        if len(data_files) > 5:
+            lines.append("</details>")
         lines.append("")
     if metrics:
         lines.append("#### Model metrics")

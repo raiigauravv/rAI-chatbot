@@ -142,6 +142,66 @@ rAI-bot-universal-converter/
 - **Real-time progress indicators**
 - **Debug panel** for troubleshooting multi-document detection
 
+# NoteGuardian 🛡️
+
+A GitHub PR bot for Data Science and ML repos. Automatically reviews Jupyter notebooks and data files in pull requests, flags issues, and posts a single, always-up-to-date summary comment.
+
+![Demo GIF](demo.gif) <!-- Replace with your actual demo GIF path -->
+
+## Features
+- 📝 **Notebook Output Checker:** Flags notebooks with cell outputs or execution counts.
+- 📊 **Data File Detector:** Lists added/modified data files (csv, parquet, json, xlsx, feather, pkl).
+- 📈 **Metrics Reporter:** If `metrics.json` is present, includes model metrics in the PR comment.
+- 🔄 **Single Comment:** Updates its own comment to avoid PR noise.
+- ⚡ **Fast & Lightweight:** Skips large notebooks for speed.
+
+## Quickstart
+1. **Copy these files to your repo:**
+   - `.github/workflows/pr-bot.yml`
+   - `scripts/pr_bot.py`
+2. **Enable GitHub Actions** and set workflow permissions to "Read and write" in repo settings.
+3. **Open a PR** with a notebook or data file change. The bot will comment automatically!
+
+## Example PR Comment
+```
+### NoteGuardian 🛡️
+_Analyzed PR #1 @ abc1234_
+
+#### Notebooks changed
+| File | Status |
+|------|--------|
+| `notebooks/demo_dirty.ipynb` | ⚠️ outputs present |
+
+> Tip: Clear outputs via `jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace your_notebook.ipynb`
+> Or add a pre-commit hook: `nbstripout`
+
+#### Data files changed
+- `data.csv`
+
+#### Model metrics
+| Metric | Value |
+|--------|-------|
+| accuracy | 0.8723 |
+| f1 | 0.8432 |
+| precision | 0.8511 |
+| recall | 0.8350 |
+```
+
+## One-click Setup
+- Fork this repo or copy the workflow and script to your own.
+- No extra secrets needed—uses GitHub’s built-in token.
+
+## Why NoteGuardian?
+- Saves reviewers time.
+- Prevents accidental data leaks or dirty notebooks.
+- Makes your repo look professional and recruiter-friendly.
+
+## Contributing
+PRs welcome! Ideas for more checks, file types, or integrations? Open an issue or PR.
+
+## License
+MIT
+
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -170,3 +230,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ⭐ **Star this repo if you found it helpful!**
 
+# Trigger bot update

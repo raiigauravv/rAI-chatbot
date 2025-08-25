@@ -17,8 +17,9 @@ SESSION.headers.update({
 })
 
 MARKER = "<!-- pr-comment-bot:ds -->"
-DATA_EXTS = {".csv", ".parquet", ".json", ".xlsx", ".feather", ".pkl"}
+DATA_EXTS = {".csv", ".parquet", ".json", ".xlsx", ".feather", ".pkl", ".tsv", ".h5", ".yaml", ".yml", ".xml"}
 IPYNB_EXT = ".ipynb"
+DEFAULT_KERNELS = {"python3", "python", "ir"}
 
 def github_env() -> Tuple[str, str, str, str]:
     token = os.getenv("GITHUB_TOKEN")
@@ -74,30 +75,45 @@ def fetch_file_content(repo: str, path: str, ref: str) -> bytes:
     # fallback
     return content.encode("utf-8")
 
-def notebook_has_outputs(nb_bytes: bytes) -> Tuple[bool, str]:
+def notebook_has_outputs(nb_bytes: bytes) -> tuple:
     if nb_bytes == b"__SKIPPED_TOO_LARGE__":
-        return (False, "skipped (file too large for inline check)")
+        return (False, "skipped (file too large for inline check)", [])
     try:
         nb = nbformat.reads(nb_bytes.decode("utf-8"), as_version=4)
     except Exception as e:
-        return (False, f"unable to parse ({e.__class__.__name__})")
+        return (False, f"unable to parse ({e.__class__.__name__})", [])
+    warnings = []
+    # Check for non-default kernel
+    kernel = (nb.get("metadata", {}).get("kernelspec", {}).get("name") or "").lower()
+    if kernel and kernel not in DEFAULT_KERNELS:
+        warnings.append(f"Non-default kernel: {kernel}")
+    # Check for large cells
+    for i, cell in enumerate(nb.cells):
+        if cell.get("cell_type") == "code" and len(cell.get("source", "")) > 2000:
+            warnings.append(f"Large code cell at {i+1}")
+        if cell.get("cell_type") == "markdown" and len(cell.get("source", "")) > 2000:
+            warnings.append(f"Large markdown cell at {i+1}")
+    # Check for out-of-order execution counts
+    exec_counts = [cell.get("execution_count") for cell in nb.cells if cell.get("cell_type") == "code" and cell.get("execution_count")]
+    if exec_counts and exec_counts != sorted(exec_counts):
+        warnings.append("Out-of-order execution counts")
     try:
         for cell in nb.cells:
             if cell.get("cell_type") == "code":
                 outs = cell.get("outputs") or []
                 if len(outs) > 0:
-                    return (True, "outputs present")
+                    return (True, "outputs present", warnings)
                 # Optional: executed but no outputs
                 if cell.get("execution_count"):
                     # Some teams consider any execution_count as “dirty”
                     pass
-        return (False, "outputs cleared ✅")
+        return (False, "outputs cleared ✅", warnings)
     except Exception as e:
-        return (False, f"check error ({e.__class__.__name__})")
+        return (False, f"check error ({e.__class__.__name__})", warnings)
 
 def build_comment(repo: str, pr_number: str, head_sha: str,
-                  ipynb_results: List[Tuple[str, str]], data_files: List[str],
-                  metrics: Dict) -> str:
+                  ipynb_results: list, data_files: list,
+                  metrics: dict) -> str:
     lines = []
     lines.append(MARKER)
     lines.append(f"### NoteGuardian 🛡️")
@@ -105,10 +121,11 @@ def build_comment(repo: str, pr_number: str, head_sha: str,
     lines.append("")
     if ipynb_results:
         lines.append("#### Notebooks changed")
-        lines.append("| File | Status |")
-        lines.append("|------|--------|")
-        for path, status in ipynb_results:
-            lines.append(f"| `{path}` | {status} |")
+        lines.append("| File | Status | Warnings |")
+        lines.append("|------|--------|----------|")
+        for path, status, warnings in ipynb_results:
+            warn_str = "; ".join(warnings) if warnings else ""
+            lines.append(f"| `{path}` | {status} | {warn_str} |")
         lines.append("")
         lines.append("> Tip: Clear outputs via `jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace your_notebook.ipynb`")
         lines.append("> Or add a pre-commit hook: `nbstripout`")
@@ -118,10 +135,8 @@ def build_comment(repo: str, pr_number: str, head_sha: str,
         for p in data_files:
             lines.append(f"- `{p}`")
         lines.append("")
-
     if metrics:
         lines.append("#### Model metrics")
-        # render a simple table if numeric
         numeric = {k: v for k, v in metrics.items() if isinstance(v, (int, float))}
         if numeric:
             lines.append("| Metric | Value |")
@@ -129,12 +144,10 @@ def build_comment(repo: str, pr_number: str, head_sha: str,
             for k, v in numeric.items():
                 lines.append(f"| {k} | {v:.4f} |")
         else:
-            # fallback to json code
             lines.append("```json")
             lines.append(json.dumps(metrics, indent=2))
             lines.append("```")
         lines.append("")
-
     if not (ipynb_results or data_files or metrics):
         lines.append("_No notebooks, data files, or metrics detected in this PR._")
     return "\n".join(lines)
@@ -182,30 +195,26 @@ def load_metrics_if_any() -> Dict:
 def main():
     repo, pr_number, head_sha, _ = github_env()
     pr_files = list_pr_files(repo, pr_number)
-
     ipynb_results = []
     data_files = []
-
     for f in pr_files:
-        status = f.get("status")  # added/modified/removed/renamed
+        status = f.get("status")
         if status in ("removed",):
             continue
         path = f.get("filename", "")
         lowered = path.lower()
-
         if lowered.endswith(IPYNB_EXT):
             content = fetch_file_content(repo, path, head_sha)
-            has_outputs, note = notebook_has_outputs(content)
+            has_outputs, note, warnings = notebook_has_outputs(content)
             if has_outputs:
-                ipynb_results.append((path, "⚠️ outputs present"))
+                ipynb_results.append((path, "⚠️ outputs present", warnings))
             else:
-                ipynb_results.append((path, note))
+                ipynb_results.append((path, note, warnings))
         else:
             for ext in DATA_EXTS:
                 if lowered.endswith(ext):
                     data_files.append(path)
                     break
-
     metrics = load_metrics_if_any()
     body = build_comment(repo, pr_number, head_sha, ipynb_results, data_files, metrics)
     existing = find_existing_comment(repo, pr_number)
